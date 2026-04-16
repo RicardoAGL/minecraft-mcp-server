@@ -120,6 +120,14 @@ Once connected to a Minecraft server, Claude can use these commands:
 ### Game State
 - `detect-gamemode` - Detect the gamemode on game
 
+## Known Vulnerabilities
+
+Running `npm audit` will report vulnerabilities in the `mineflayer` -> `minecraft-protocol` -> `prismarine-auth` -> `@xboxreplay/xboxlive-auth` -> `axios` dependency chain.
+
+These are only triggered when using Microsoft account authentication (`auth: 'microsoft'`). When connecting to a local LAN world in offline mode (the default for this server), that code path is never executed.
+
+The fix requires `minecraft-protocol` to upgrade its `prismarine-auth` dependency. Until that upstream change lands, running `npm audit fix --force` would downgrade mineflayer to 4.0.0, which breaks compatibility. We accept the documented risk for offline/LAN use.
+
 ## Contributing
 
 Feel free to submit pull requests or open issues for improvements. All refactoring commits, functional and test contributions, issues and discussion are greatly appreciated!
