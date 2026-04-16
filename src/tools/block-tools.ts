@@ -10,6 +10,7 @@ import { coerceCoordinates } from './coordinate-utils.js';
 
 type FaceDirection = 'up' | 'down' | 'north' | 'south' | 'east' | 'west';
 const MAX_FIND_BLOCKS_COUNT = 256;
+const MAX_FILL_VOLUME = 512;
 
 interface FaceOption {
   direction: string;
@@ -187,6 +188,100 @@ export function registerBlockTools(factory: ToolFactory, getBot: () => mineflaye
         .join('\n');
 
       return factory.createResponse(`Found ${blocks.length} ${blockType} block(s) within ${maxDistance} blocks:\n${blocksList}`);
+    }
+  );
+
+  // ─── fill-region ───────────────────────────────────────────────────────────
+  factory.registerTool(
+    'fill-region',
+    `Fill a rectangular region with a specific block type. The bot must have the block items in its inventory. Regions larger than ${MAX_FILL_VOLUME} blocks are rejected — split into smaller calls.`,
+    {
+      x1: z.coerce.number().describe('X coordinate of the first corner'),
+      y1: z.coerce.number().describe('Y coordinate of the first corner'),
+      z1: z.coerce.number().describe('Z coordinate of the first corner'),
+      x2: z.coerce.number().describe('X coordinate of the opposite corner'),
+      y2: z.coerce.number().describe('Y coordinate of the opposite corner'),
+      z2: z.coerce.number().describe('Z coordinate of the opposite corner'),
+      blockType: z.string().describe('Block type to fill with (e.g. "oak_log", "chest", "barrel")'),
+    },
+    async ({ x1, y1, z1, x2, y2, z2, blockType }) => {
+      const bot = getBot();
+      const mcData = minecraftData(bot.version);
+
+      if (!mcData.blocksByName[blockType]) {
+        return factory.createResponse(`Unknown block type: ${blockType}`);
+      }
+
+      const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+      const minZ = Math.min(z1, z2), maxZ = Math.max(z1, z2);
+      const volume = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+
+      if (volume > MAX_FILL_VOLUME) {
+        return factory.createResponse(
+          `Region too large: ${volume} blocks. Maximum is ${MAX_FILL_VOLUME}. Split into smaller fill calls.`
+        );
+      }
+
+      const item = bot.inventory.items().find(i => i.name === blockType);
+      if (!item) {
+        return factory.createResponse(`No ${blockType} in inventory.`);
+      }
+      await bot.equip(item, 'hand');
+
+      const adjacentOffsets = [
+        new Vec3(0, -1, 0), new Vec3(0, 1, 0),
+        new Vec3(1, 0, 0), new Vec3(-1, 0, 0),
+        new Vec3(0, 0, 1), new Vec3(0, 0, -1),
+      ];
+
+      let placed = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      for (let bx = minX; bx <= maxX; bx++) {
+        for (let by = minY; by <= maxY; by++) {
+          for (let bz = minZ; bz <= maxZ; bz++) {
+            const pos = new Vec3(bx, by, bz);
+            const existing = bot.blockAt(pos);
+
+            if (existing && existing.name !== 'air') {
+              skipped++;
+              continue;
+            }
+
+            let success = false;
+            for (const offset of adjacentOffsets) {
+              const refPos = pos.plus(offset);
+              const refBlock = bot.blockAt(refPos);
+
+              if (!refBlock || refBlock.name === 'air') continue;
+
+              if (!bot.canSeeBlock(refBlock)) {
+                const goal = new goals.GoalNear(bx, by, bz, 3);
+                await bot.pathfinder.goto(goal);
+              }
+
+              try {
+                // faceVec points from the reference block toward our target
+                await bot.placeBlock(refBlock, offset.scaled(-1));
+                placed++;
+                success = true;
+                break;
+              } catch (err) {
+                log('warn', `fill-region: failed placing at (${bx},${by},${bz}) via face: ${err}`);
+              }
+            }
+
+            if (!success) failed++;
+          }
+        }
+      }
+
+      return factory.createResponse(
+        `Fill complete in (${minX},${minY},${minZ}) to (${maxX},${maxY},${maxZ}): ` +
+        `${placed} placed, ${skipped} skipped (already filled), ${failed} failed.`
+      );
     }
   );
 }
