@@ -71,13 +71,19 @@ Statuses: `TODO` | `IN_PROGRESS` | `DONE` | `BLOCKED` | `BACKLOG` | `SKIPPED`
 - **Context**: Use Ollama to draft the template; edit manually. Drives consistency across all 5 episodes.
 
 ### Ticket 5: M1 — Test full recording pipeline end-to-end
-- **What**: Run one scratch session: bot joins, places a few blocks with signs, recording captured,
-  replay exported. Verify the MCP tools (place-sign, fill-region) work in-game.
+- **What**: Two-phase test. Phase A validates tools without Minecraft. Phase B is the live session.
 - **Files**: n/a (live test session — notes in docs/session-notes/)
-- **Verify**: Bot joins successfully; place-sign writes readable text; Replay Mod captures session
+- **Verify**: All 3 new tools visible in Inspector (Phase A); place-sign writes readable text in-game (Phase B)
 - **Commit**: n/a (or `chore(test): add scratch session notes` if worth keeping)
 - **Depends**: Tickets 3, 4
-- **Context**: First live connection test. If tools fail, file issues on feat/fix branches.
+- **Context**:
+  - **Phase A — MCP Inspector (no Minecraft needed, do this first):**
+    `npx @modelcontextprotocol/inspector node ~/Desktop/github/minecraft-mcp-server/dist/main.js`
+    Verify place-sign, read-sign, fill-region tool schemas load and descriptions render correctly.
+    Catches wiring bugs before wasting a game session.
+  - **Phase B — Live in-game:** World open to LAN port 25565, Replay Mod active.
+    `/give ClaudeBot oak_sign 32 stone 64 barrel 16` before starting.
+    If tools fail in-game, file issues on feat/fix branches before retrying.
 
 ### Ticket 6: E1 — Design normalization demo build plan
 - **What**: Plan the exact block layout for Episode 1: the "chaos chest" (everything in one place)
